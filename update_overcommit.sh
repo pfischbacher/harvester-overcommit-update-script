@@ -1,6 +1,7 @@
 #!/bin/bash
 
 export KUBECONFIG=<path_to_kubeconfig>
+UPDATE_WAIT_TIME=10 # Increase this if you wish to increase the wait time
 
 # Get overcommit-config JSON
 CONFIG_JSON=$(kubectl get settings.harvesterhci.io overcommit-config -o jsonpath='{.value}')
@@ -68,9 +69,24 @@ kubectl get vm -A -o json | jq -c '.items[]' | while read -r vm; do
 
   echo "Patching VM $NS/$NAME with CPU=$NEW_CPU and Memory=$NEW_MEM"
 
-
   kubectl patch vm "$NAME" -n "$NS" --type merge -p \
     "{\"spec\":{\"template\":{\"spec\":{\"domain\":{\"resources\":{\"requests\":{\"cpu\":\"$NEW_CPU\",\"memory\":\"$NEW_MEM\"}}}}}}}"
+done
+
+## Check the updated values.
+echo "Waiting for $UPDATE_WAIT_TIME seconds to allow for updated changes to reflect in the VMs."
+#sleep $UPDATE_WAIT_TIME  # Wait 10 seconds before checking the updated values. Increase this number if it isn't long enough.
+for ((i=1; i<=$UPDATE_WAIT_TIME; i++)); do
+  echo -n ". "
+  sleep 1
+done
+echo
+
+echo "Resuming..."
+
+kubectl get vm -A -o json | jq -c '.items[]' | while read -r vm; do
+  NS=$(echo "$vm" | jq -r '.metadata.namespace')
+  NAME=$(echo "$vm" | jq -r '.metadata.name')
 
   LIMITS_CPU=$(echo "$vm" | jq -r '.spec.template.spec.domain.resources.limits.cpu // "none"')
   LIMITS_MEM=$(echo "$vm" | jq -r '.spec.template.spec.domain.resources.limits.memory // "none"')
